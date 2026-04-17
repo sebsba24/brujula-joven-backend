@@ -4,7 +4,7 @@ from fastapi import HTTPException
 
 import models
 from security import create_access_token
-from security import verify_password  # si lo agregas
+from security import verify_password
 
 
 class AuthService:

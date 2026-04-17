@@ -81,6 +81,7 @@ class Usuario(Base, TimestampMixin, EstadoMixin):
     usuario_carreras = relationship("UsuarioCarrera", back_populates="usuario", cascade="all, delete-orphan")
     usuario_subsidios = relationship("UsuarioSubsidio", back_populates="usuario", cascade="all, delete-orphan")
     respuestas_cuestionario = relationship("RespuestaCuestionario", back_populates="usuario", cascade="all, delete-orphan")
+    perfiles_financieros = relationship("PerfilFinanciero", back_populates="usuario", cascade="all, delete-orphan")
 
 
 # ==================== RELACIONES ====================
@@ -139,6 +140,42 @@ class PreguntaMultiple(Base):
     id_enunciado = Column(Integer, ForeignKey("preguntas.id_pregunta"), primary_key=True)
     id_pregunta = Column(Integer, ForeignKey("preguntas.id_pregunta"), primary_key=True)
     grupo = Column(String(1), nullable=False)
+
+# ==================== RESPUESTAS CUESTIONARIO ====================
+
+# ==================== PERFIL FINANCIERO ====================
+
+class PerfilFinanciero(Base, TimestampMixin, EstadoMixin):
+    __tablename__ = "perfiles_financieros"
+
+    id_perfil = Column(Integer, primary_key=True, index=True)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="CASCADE"))
+
+    # Paso 1: Hogar
+    estrato = Column(Integer, nullable=False)
+    personas_hogar = Column(Integer)
+    personas_trabajan = Column(Integer)
+    ingresos_hogar = Column(String(10))           # '<1', '1-2', '2-4', '4+'
+
+    # Paso 2: Situación personal
+    trabaja_actualmente = Column(Boolean, default=False)
+    ingresos_propios = Column(String(10))          # 'ninguno', '<1', '1-2', '2+'
+    personas_a_cargo = Column(Boolean, default=False)
+    tiene_deudas = Column(Boolean, default=False)
+
+    # Paso 3: Capacidad educativa
+    acceso_internet = Column(Boolean, default=False)
+    tiene_computador = Column(Boolean, default=False)
+    disponibilidad_tiempo = Column(String(20))     # 'completo', 'medio', 'fines_semana'
+    puede_pagar_matricula = Column(String(15))     # 'no', 'parcialmente', 'si'
+    recibe_subsidios = Column(Boolean, default=False)
+
+    # Resultado calculado
+    capacidad_economica = Column(String(10))       # 'alta', 'media', 'baja'
+    elegible_subsidios = Column(Boolean, default=False)
+
+    usuario = relationship("Usuario", back_populates="perfiles_financieros")
+
 
 # ==================== RESPUESTAS CUESTIONARIO ====================
 

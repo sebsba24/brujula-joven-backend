@@ -202,3 +202,48 @@ class PerfilResponse(BaseModel):
     dominante: str
     dominante_nombre: str
     top3: List[str]
+
+# ==================== PERFIL FINANCIERO ====================
+
+class PerfilFinancieroCreate(BaseModel):
+    estrato: int = Field(..., ge=1, le=6)
+    personas_hogar: Optional[int] = None
+    personas_trabajan: Optional[int] = None
+    ingresos_hogar: Optional[str] = None
+    trabaja_actualmente: bool = False
+    ingresos_propios: Optional[str] = None
+    personas_a_cargo: bool = False
+    tiene_deudas: bool = False
+    acceso_internet: bool = False
+    tiene_computador: bool = False
+    disponibilidad_tiempo: Optional[str] = None
+    puede_pagar_matricula: Optional[str] = None
+    recibe_subsidios: bool = False
+
+class PerfilFinancieroResponse(PerfilFinancieroCreate, TimestampSchema):
+    id_perfil: int
+    id_usuario: int
+    capacidad_economica: Optional[str] = None
+    elegible_subsidios: bool = False
+    estado: bool
+
+# ==================== RECOMENDACIONES EDUCACIÓN ====================
+
+class ProgramaEducativo(BaseModel):
+    nombre: str
+    inst: str
+    tipo: str
+    costo: str
+    ciudad: str
+    modalidad: List[str]
+    con_beca: bool
+
+class RecomendacionesEducacionResponse(BaseModel):
+    capacidad_economica: Optional[str] = None
+    elegible_subsidios: Optional[bool] = None
+    modalidad_recomendada: Optional[str] = None
+    top_rasgos: Optional[List[str]] = None
+    programas: List[dict]
+    becas: List[str]
+    sin_perfil_financiero: bool = False
+    sin_perfil_vocacional: bool = False

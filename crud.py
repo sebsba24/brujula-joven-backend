@@ -4,9 +4,9 @@ from sqlalchemy.exc import IntegrityError
 from typing import TypeVar, Generic, Type, Optional, List, Dict, Any
 from fastapi import HTTPException
 
-from database import Base
-from security import hash_password
-import models
+from backend.database import Base
+from backend.security import hash_password
+import backend.models as models
 
 T = TypeVar("T", bound=Base)
 

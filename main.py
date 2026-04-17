@@ -4,12 +4,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.middleware.cors import CORSMiddleware
 from collections import defaultdict
 from typing import List
-from security import get_current_user
+from backend.security import get_current_user
 
-from database import get_db
-import crud
-import schemas
-from routes import auth
+from backend.database import get_db
+import backend.crud as crud
+import backend.schemas as schemas
+from backend.routes import auth
 
 app = FastAPI(
     title="Brujula Joven API",
