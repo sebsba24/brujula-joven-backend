@@ -1,15 +1,17 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi.middleware.cors import CORSMiddleware
 from collections import defaultdict
 from typing import List
-from backend.security import get_current_user
+from security import get_current_user
 
-from backend.database import get_db
-import backend.crud as crud
-import backend.schemas as schemas
-from backend.routes import auth
+from database import get_db
+import crud
+import schemas
+from routes import auth
+
+ALLOWED_ORIGINS = ["http://localhost:5173"]
 
 app = FastAPI(
     title="Brujula Joven API",
@@ -19,11 +21,25 @@ app = FastAPI(
 # ==================== CORS ====================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ==================== CORS EN ERRORES 500 ====================
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    origin = request.headers.get("origin", "")
+    headers = {}
+    if origin in ALLOWED_ORIGINS:
+        headers["Access-Control-Allow-Origin"]      = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Error interno: {str(exc)}"},
+        headers=headers,
+    )
 
 VALID_RASGOS = {"R", "I", "A", "S", "E", "C", "N"}
 # ==================== AUTH ====================
@@ -300,6 +316,254 @@ async def get_perfil_by_usuario(id_usuario: int, db: AsyncSession = Depends(get_
     ultima = sorted(data, key=lambda x: x.id_respuesta, reverse=True)[0]
 
     return calcular_perfil(ultima.respuestas)
+
+# ===================== LÓGICA FINANCIERA =====================
+
+PROGRAMAS_EDUCATIVOS = {
+    "R": [
+        {"nombre": "Técnico en Electrónica",     "inst": "SENA",           "tipo": "Técnico",       "costo": "gratuito", "ciudad": "Nacional", "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Mecánica Automotriz",          "inst": "SENA",           "tipo": "Técnico",       "costo": "gratuito", "ciudad": "Nacional", "modalidad": ["presencial"],            "con_beca": True},
+        {"nombre": "Tecnología en Construcción",  "inst": "SENA",           "tipo": "Tecnológico",   "costo": "gratuito", "ciudad": "Nacional", "modalidad": ["presencial"],            "con_beca": True},
+        {"nombre": "Ingeniería Mecánica",          "inst": "UNAL",           "tipo": "Universitario", "costo": "bajo",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": True},
+        {"nombre": "Ingeniería Civil",             "inst": "UNAL",           "tipo": "Universitario", "costo": "bajo",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": True},
+        {"nombre": "Ingeniería Industrial",        "inst": "Uniminuto",      "tipo": "Universitario", "costo": "medio",    "ciudad": "Bogotá",   "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Ingeniería Mecánica",          "inst": "U. de los Andes","tipo": "Universitario", "costo": "alto",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": False},
+    ],
+    "I": [
+        {"nombre": "Análisis y Desarrollo de Software","inst": "SENA",      "tipo": "Técnico",       "costo": "gratuito", "ciudad": "Nacional", "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Ingeniería de Sistemas",       "inst": "UNAL",           "tipo": "Universitario", "costo": "bajo",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": True},
+        {"nombre": "Matemáticas",                  "inst": "UNAL",           "tipo": "Universitario", "costo": "bajo",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": True},
+        {"nombre": "Ingeniería de Sistemas",       "inst": "Uniminuto",      "tipo": "Universitario", "costo": "medio",    "ciudad": "Bogotá",   "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Ciencia de Datos",             "inst": "U. de los Andes","tipo": "Universitario", "costo": "alto",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": False},
+        {"nombre": "Física",                       "inst": "U. Javeriana",   "tipo": "Universitario", "costo": "alto",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": False},
+    ],
+    "A": [
+        {"nombre": "Diseño Gráfico",               "inst": "SENA",           "tipo": "Técnico",       "costo": "gratuito", "ciudad": "Nacional", "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Producción Multimedia",        "inst": "SENA",           "tipo": "Técnico",       "costo": "gratuito", "ciudad": "Nacional", "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Artes Visuales",               "inst": "UNAL",           "tipo": "Universitario", "costo": "bajo",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": True},
+        {"nombre": "Diseño Gráfico",               "inst": "Uniminuto",      "tipo": "Universitario", "costo": "medio",    "ciudad": "Bogotá",   "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Arquitectura",                 "inst": "U. Javeriana",   "tipo": "Universitario", "costo": "alto",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": False},
+        {"nombre": "Publicidad",                   "inst": "U. Jorge Tadeo", "tipo": "Universitario", "costo": "alto",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": False},
+    ],
+    "S": [
+        {"nombre": "Atención a la Primera Infancia","inst": "SENA",          "tipo": "Técnico",       "costo": "gratuito", "ciudad": "Nacional", "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Trabajo Social",               "inst": "UNAL",           "tipo": "Universitario", "costo": "bajo",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": True},
+        {"nombre": "Enfermería",                   "inst": "UNAL",           "tipo": "Universitario", "costo": "bajo",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": True},
+        {"nombre": "Psicología",                   "inst": "Uniminuto",      "tipo": "Universitario", "costo": "medio",    "ciudad": "Bogotá",   "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Docencia",                     "inst": "U. Pedagógica",  "tipo": "Universitario", "costo": "bajo",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": True},
+        {"nombre": "Psicología",                   "inst": "U. Javeriana",   "tipo": "Universitario", "costo": "alto",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": False},
+    ],
+    "E": [
+        {"nombre": "Técnico en Ventas",            "inst": "SENA",           "tipo": "Técnico",       "costo": "gratuito", "ciudad": "Nacional", "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Administración de Empresas",   "inst": "UNAL",           "tipo": "Universitario", "costo": "bajo",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": True},
+        {"nombre": "Administración de Empresas",   "inst": "Uniminuto",      "tipo": "Universitario", "costo": "medio",    "ciudad": "Bogotá",   "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Negocios Internacionales",     "inst": "U. EAN",         "tipo": "Universitario", "costo": "medio",    "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": True},
+        {"nombre": "Marketing",                    "inst": "U. de los Andes","tipo": "Universitario", "costo": "alto",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": False},
+        {"nombre": "Emprendimiento e Innovación",  "inst": "U. Javeriana",   "tipo": "Universitario", "costo": "alto",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": False},
+    ],
+    "C": [
+        {"nombre": "Contabilidad y Finanzas",      "inst": "SENA",           "tipo": "Técnico",       "costo": "gratuito", "ciudad": "Nacional", "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Gestión Documental",           "inst": "SENA",           "tipo": "Técnico",       "costo": "gratuito", "ciudad": "Nacional", "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Contaduría Pública",           "inst": "UNAL",           "tipo": "Universitario", "costo": "bajo",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": True},
+        {"nombre": "Administración",               "inst": "Uniminuto",      "tipo": "Universitario", "costo": "medio",    "ciudad": "Bogotá",   "modalidad": ["presencial", "virtual"], "con_beca": True},
+        {"nombre": "Finanzas y Comercio Exterior", "inst": "U. EAN",         "tipo": "Universitario", "costo": "medio",    "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": False},
+        {"nombre": "Contaduría Pública",           "inst": "U. Javeriana",   "tipo": "Universitario", "costo": "alto",     "ciudad": "Bogotá",   "modalidad": ["presencial"],            "con_beca": False},
+    ],
+}
+
+BECAS_POR_CAPACIDAD = {
+    "baja": [
+        "Beca Generación E — cubre el 100% de matrícula en universidades públicas (estratos 1, 2 y 3)",
+        "Crédito ICETEX condonable — para estratos 1 y 2",
+        "Programas gratuitos SENA — tecnólogos y técnicos sin costo",
+        "Fondo de Solidaridad y Garantías (FONSAET) — apoyo a jóvenes vulnerables",
+    ],
+    "media": [
+        "Beca Generación E — para estratos 1, 2 y 3 en universidades públicas",
+        "Crédito ICETEX largo plazo — tasas subsidiadas para estrato 3",
+        "Descuentos por mérito académico en universidades privadas",
+        "Programas técnicos y tecnológicos SENA gratuitos",
+    ],
+    "alta": [
+        "Crédito ICETEX — financiación parcial disponible",
+        "Becas por mérito en universidades privadas de alta calidad",
+        "Programas de intercambio y doble titulación",
+    ],
+}
+
+def calcular_capacidad_financiera(data: dict) -> dict:
+    estrato       = data.get("estrato", 3)
+    ingresos_hogar = data.get("ingresos_hogar", "1-2")
+    puede_pagar   = data.get("puede_pagar_matricula", "parcialmente")
+
+    if estrato >= 4 or puede_pagar == "si":
+        capacidad = "alta"
+    elif estrato <= 2 and ingresos_hogar == "<1" and puede_pagar == "no":
+        capacidad = "baja"
+    else:
+        capacidad = "media"
+
+    elegible  = estrato <= 3
+    internet  = data.get("acceso_internet", False)
+    computador = data.get("tiene_computador", False)
+    disp      = data.get("disponibilidad_tiempo", "completo")
+    modalidad = "virtual" if (internet and computador and disp != "completo") else "presencial"
+
+    return {"capacidad_economica": capacidad, "elegible_subsidios": elegible, "modalidad_recomendada": modalidad}
+
+def filtrar_programas(rasgos: list, capacidad: str) -> list:
+    COSTOS_PERMITIDOS = {
+        "baja":  ["gratuito", "bajo"],
+        "media": ["gratuito", "bajo", "medio"],
+        "alta":  ["gratuito", "bajo", "medio", "alto"],
+    }
+    permitidos = COSTOS_PERMITIDOS.get(capacidad, ["gratuito", "bajo", "medio"])
+    vistos, resultado = set(), []
+    for rasgo in rasgos:
+        for prog in PROGRAMAS_EDUCATIVOS.get(rasgo, []):
+            if prog["costo"] not in permitidos and not prog["con_beca"]:
+                continue
+            key = (prog["nombre"], prog["inst"])
+            if key in vistos:
+                continue
+            vistos.add(key)
+            resultado.append({**prog, "rasgo": rasgo})
+    return resultado
+
+
+# ==================== ENDPOINTS FINANCIERO ====================
+
+@app.post("/financiero/guardar", tags=["Financiero"])
+async def guardar_perfil_financiero(
+    payload: schemas.PerfilFinancieroCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    calculado = calcular_capacidad_financiera(payload.model_dump())
+    data = {
+        **payload.model_dump(),
+        "id_usuario": current_user.id_usuario,
+        "capacidad_economica": calculado["capacidad_economica"],
+        "elegible_subsidios":  calculado["elegible_subsidios"],
+        "estado": True,
+    }
+    result = await crud.perfil_financiero_crud.create(db, data)
+    return {
+        "message":             "Perfil financiero guardado",
+        "id_perfil":           result.id_perfil,
+        "capacidad_economica": result.capacidad_economica,
+        "elegible_subsidios":  result.elegible_subsidios,
+        "modalidad_recomendada": calculado["modalidad_recomendada"],
+    }
+
+
+@app.get("/usuarios/{id_usuario}/perfil-financiero", tags=["Financiero"])
+async def get_perfil_financiero(id_usuario: int, db: AsyncSession = Depends(get_db)):
+    data = await crud.perfil_financiero_crud.get_filtered(db, {"id_usuario": id_usuario})
+    if not data:
+        raise HTTPException(status_code=404, detail="Sin perfil financiero")
+    ultimo = sorted(data, key=lambda x: x.id_perfil, reverse=True)[0]
+    calc   = calcular_capacidad_financiera({
+        "estrato":               ultimo.estrato,
+        "ingresos_hogar":        ultimo.ingresos_hogar,
+        "puede_pagar_matricula": ultimo.puede_pagar_matricula,
+        "acceso_internet":       ultimo.acceso_internet,
+        "tiene_computador":      ultimo.tiene_computador,
+        "disponibilidad_tiempo": ultimo.disponibilidad_tiempo,
+    })
+    return {
+        "id_perfil":              ultimo.id_perfil,
+        "estrato":                ultimo.estrato,
+        "personas_hogar":         ultimo.personas_hogar,
+        "personas_trabajan":      ultimo.personas_trabajan,
+        "ingresos_hogar":         ultimo.ingresos_hogar,
+        "trabaja_actualmente":    ultimo.trabaja_actualmente,
+        "ingresos_propios":       ultimo.ingresos_propios,
+        "personas_a_cargo":       ultimo.personas_a_cargo,
+        "tiene_deudas":           ultimo.tiene_deudas,
+        "acceso_internet":        ultimo.acceso_internet,
+        "tiene_computador":       ultimo.tiene_computador,
+        "disponibilidad_tiempo":  ultimo.disponibilidad_tiempo,
+        "puede_pagar_matricula":  ultimo.puede_pagar_matricula,
+        "recibe_subsidios":       ultimo.recibe_subsidios,
+        "capacidad_economica":    ultimo.capacidad_economica,
+        "elegible_subsidios":     ultimo.elegible_subsidios,
+        "modalidad_recomendada":  calc["modalidad_recomendada"],
+    }
+
+
+@app.get("/usuarios/{id_usuario}/recomendaciones-educacion", tags=["Financiero"])
+async def get_recomendaciones_educacion(id_usuario: int, db: AsyncSession = Depends(get_db)):
+    # Perfil vocacional
+    resp_data    = await crud.respuesta_cuestionario_crud.get_filtered(db, {"id_usuario": id_usuario})
+    sin_vocacional = not bool(resp_data)
+    top_rasgos   = ["R", "I", "A"]
+    if resp_data:
+        ultima_resp = sorted(resp_data, key=lambda x: x.id_respuesta, reverse=True)[0]
+        perfil_riasec = calcular_perfil(ultima_resp.respuestas)
+        top_rasgos    = perfil_riasec["top3"]
+
+    # Perfil financiero
+    fin_data       = await crud.perfil_financiero_crud.get_filtered(db, {"id_usuario": id_usuario})
+    sin_financiero = not bool(fin_data)
+    capacidad, elegible, modalidad = "media", True, "presencial"
+    if fin_data:
+        uf  = sorted(fin_data, key=lambda x: x.id_perfil, reverse=True)[0]
+        capacidad = uf.capacidad_economica or "media"
+        elegible  = uf.elegible_subsidios
+        calc      = calcular_capacidad_financiera({
+            "estrato": uf.estrato, "ingresos_hogar": uf.ingresos_hogar,
+            "puede_pagar_matricula": uf.puede_pagar_matricula,
+            "acceso_internet": uf.acceso_internet, "tiene_computador": uf.tiene_computador,
+            "disponibilidad_tiempo": uf.disponibilidad_tiempo,
+        })
+        modalidad = calc["modalidad_recomendada"]
+
+    return {
+        "capacidad_economica":    capacidad,
+        "elegible_subsidios":     elegible,
+        "modalidad_recomendada":  modalidad,
+        "top_rasgos":             top_rasgos,
+        "programas":              filtrar_programas(top_rasgos, capacidad),
+        "becas":                  BECAS_POR_CAPACIDAD.get(capacidad, []),
+        "sin_perfil_financiero":  sin_financiero,
+        "sin_perfil_vocacional":  sin_vocacional,
+    }
+
+
+@app.delete("/usuarios/{id_usuario}/perfil-financiero", tags=["Financiero"])
+async def eliminar_perfil_financiero(
+    id_usuario: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if current_user.id_usuario != id_usuario:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    data = await crud.perfil_financiero_crud.get_filtered(db, {"id_usuario": id_usuario})
+    if not data:
+        raise HTTPException(status_code=404, detail="Sin perfil financiero")
+    for perfil in data:
+        await db.delete(perfil)
+    await db.commit()
+    return {"message": "Perfil financiero eliminado"}
+
+
+@app.delete("/usuarios/{id_usuario}/respuestas-cuestionario", tags=["Respuestas Cuestionario"])
+async def eliminar_respuestas_cuestionario(
+    id_usuario: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if current_user.id_usuario != id_usuario:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    data = await crud.respuesta_cuestionario_crud.get_filtered(db, {"id_usuario": id_usuario})
+    if not data:
+        raise HTTPException(status_code=404, detail="Sin respuestas registradas")
+    for resp in data:
+        await db.delete(resp)
+    await db.commit()
+    return {"message": "Respuestas del cuestionario eliminadas"}
+
 
 @app.get("/usuarios/{id_usuario}/recomendaciones", tags=["Usuario Perfil"])
 async def get_recomendaciones_by_usuario(id_usuario: int, db: AsyncSession = Depends(get_db)):

@@ -4,9 +4,9 @@ from sqlalchemy.exc import IntegrityError
 from typing import TypeVar, Generic, Type, Optional, List, Dict, Any
 from fastapi import HTTPException
 
-from backend.database import Base
-from backend.security import hash_password
-import backend.models as models
+from database import Base
+from security import hash_password
+import models
 
 T = TypeVar("T", bound=Base)
 
@@ -136,6 +136,7 @@ usuario_carrera_crud = CRUDBase(models.UsuarioCarrera, "id_usuario_carrera")
 usuario_subsidio_crud = CRUDBase(models.UsuarioSubsidio, "id_usuario_subsidio")
 pregunta_crud = CRUDBase(models.Pregunta, "id_pregunta")
 respuesta_cuestionario_crud = CRUDBase(models.RespuestaCuestionario, "id_respuesta")
+perfil_financiero_crud = CRUDBase(models.PerfilFinanciero, "id_perfil")
 
 
 # ==================== MÉTODOS ESPECIALES ====================
