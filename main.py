@@ -411,24 +411,60 @@ def calcular_capacidad_financiera(data: dict) -> dict:
 
     return {"capacidad_economica": capacidad, "elegible_subsidios": elegible, "modalidad_recomendada": modalidad}
 
-def filtrar_programas(rasgos: list, capacidad: str) -> list:
-    COSTOS_PERMITIDOS = {
+# Modelo hexagonal de Holland: rasgos adyacentes tienen mayor afinidad
+HOLLAND_ADYACENTES = {
+    "R": ["I", "C"],
+    "I": ["R", "A"],
+    "A": ["I", "S"],
+    "S": ["A", "E"],
+    "E": ["S", "C"],
+    "C": ["E", "R"],
+}
+
+def puntuar_programas(rasgos_scores: dict, capacidad: str, modalidad_pref: str) -> list:
+    """
+    Scoring ponderado por programa:
+      60% RIASEC match  (score directo 80% + bonus adyacente Holland 20%)
+      25% match financiero
+      15% match modalidad
+    """
+    COSTOS_OK = {
         "baja":  ["gratuito", "bajo"],
         "media": ["gratuito", "bajo", "medio"],
         "alta":  ["gratuito", "bajo", "medio", "alto"],
     }
-    permitidos = COSTOS_PERMITIDOS.get(capacidad, ["gratuito", "bajo", "medio"])
-    vistos, resultado = set(), []
-    for rasgo in rasgos:
-        for prog in PROGRAMAS_EDUCATIVOS.get(rasgo, []):
-            if prog["costo"] not in permitidos and not prog["con_beca"]:
-                continue
-            key = (prog["nombre"], prog["inst"])
-            if key in vistos:
-                continue
+    costos_permitidos = COSTOS_OK.get(capacidad, ["gratuito", "bajo", "medio"])
+    resultado = []
+
+    for rasgo, programas in PROGRAMAS_EDUCATIVOS.items():
+        score_directo = rasgos_scores.get(rasgo, 0) / 100
+
+        adyacentes = HOLLAND_ADYACENTES.get(rasgo, [])
+        score_adj = max((rasgos_scores.get(a, 0) for a in adyacentes), default=0) / 100
+
+        riasec_score = (score_directo * 0.80) + (score_adj * 0.20)
+
+        for prog in programas:
+            if prog["costo"] in costos_permitidos:
+                fin_score = 1.0
+            elif prog["con_beca"]:
+                fin_score = 0.65
+            else:
+                continue  # inaccesible sin beca → excluir
+
+            mod_score = 1.0 if modalidad_pref in prog["modalidad"] else 0.3
+
+            total = round((riasec_score * 0.60) + (fin_score * 0.25) + (mod_score * 0.15), 3)
+            resultado.append({**prog, "rasgo": rasgo, "score": total})
+
+    vistos, ordenados = set(), []
+    for p in sorted(resultado, key=lambda x: x["score"], reverse=True):
+        key = (p["nombre"], p["inst"])
+        if key not in vistos:
             vistos.add(key)
-            resultado.append({**prog, "rasgo": rasgo})
-    return resultado
+            ordenados.append(p)
+
+    return ordenados
 
 
 # ==================== ENDPOINTS FINANCIERO ====================
@@ -495,20 +531,22 @@ async def get_perfil_financiero(id_usuario: int, db: AsyncSession = Depends(get_
 @app.get("/usuarios/{id_usuario}/recomendaciones-educacion", tags=["Financiero"])
 async def get_recomendaciones_educacion(id_usuario: int, db: AsyncSession = Depends(get_db)):
     # Perfil vocacional
-    resp_data    = await crud.respuesta_cuestionario_crud.get_filtered(db, {"id_usuario": id_usuario})
+    resp_data      = await crud.respuesta_cuestionario_crud.get_filtered(db, {"id_usuario": id_usuario})
     sin_vocacional = not bool(resp_data)
-    top_rasgos   = ["R", "I", "A"]
+    top_rasgos     = ["R", "I", "A"]
+    rasgos_scores  = {"R": 33, "I": 33, "A": 34, "S": 0, "E": 0, "C": 0}  # defaults
     if resp_data:
-        ultima_resp = sorted(resp_data, key=lambda x: x.id_respuesta, reverse=True)[0]
+        ultima_resp   = sorted(resp_data, key=lambda x: x.id_respuesta, reverse=True)[0]
         perfil_riasec = calcular_perfil(ultima_resp.respuestas)
         top_rasgos    = perfil_riasec["top3"]
+        rasgos_scores = perfil_riasec["perfil"]  # scores reales 0-100 por cada rasgo
 
     # Perfil financiero
     fin_data       = await crud.perfil_financiero_crud.get_filtered(db, {"id_usuario": id_usuario})
     sin_financiero = not bool(fin_data)
     capacidad, elegible, modalidad = "media", True, "presencial"
     if fin_data:
-        uf  = sorted(fin_data, key=lambda x: x.id_perfil, reverse=True)[0]
+        uf        = sorted(fin_data, key=lambda x: x.id_perfil, reverse=True)[0]
         capacidad = uf.capacidad_economica or "media"
         elegible  = uf.elegible_subsidios
         calc      = calcular_capacidad_financiera({
@@ -520,14 +558,15 @@ async def get_recomendaciones_educacion(id_usuario: int, db: AsyncSession = Depe
         modalidad = calc["modalidad_recomendada"]
 
     return {
-        "capacidad_economica":    capacidad,
-        "elegible_subsidios":     elegible,
-        "modalidad_recomendada":  modalidad,
-        "top_rasgos":             top_rasgos,
-        "programas":              filtrar_programas(top_rasgos, capacidad),
-        "becas":                  BECAS_POR_CAPACIDAD.get(capacidad, []),
-        "sin_perfil_financiero":  sin_financiero,
-        "sin_perfil_vocacional":  sin_vocacional,
+        "capacidad_economica":   capacidad,
+        "elegible_subsidios":    elegible,
+        "modalidad_recomendada": modalidad,
+        "top_rasgos":            top_rasgos,
+        "rasgos_scores":         rasgos_scores,
+        "programas":             puntuar_programas(rasgos_scores, capacidad, modalidad),
+        "becas":                 BECAS_POR_CAPACIDAD.get(capacidad, []),
+        "sin_perfil_financiero": sin_financiero,
+        "sin_perfil_vocacional": sin_vocacional,
     }
 
 
