@@ -3,8 +3,9 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://postgres:Admin1234@localhost:5432/brujulaj_db"
+    database_url: str = "postgresql+asyncpg://postgres:1234@localhost:5432/brujulaj_db"
     debug: bool = False
+    anthropic_api_key: str = ""
 
     class Config:
         env_file = ".env"
