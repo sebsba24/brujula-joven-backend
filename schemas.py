@@ -92,7 +92,7 @@ class UsuarioBase(BaseModel):
     numero_documento: str = Field(..., max_length=25)
 
 class UsuarioCreate(UsuarioBase):
-    password: str = Field(..., min_length=6)
+    password: str = Field(..., min_length=8)
     estado: bool = True
 
 class UsuarioUpdate(BaseModel):
@@ -101,7 +101,7 @@ class UsuarioUpdate(BaseModel):
     tipo_documento: Optional[str] = Field(None, max_length=10)
     numero_documento: Optional[str] = Field(None, max_length=25)
     estado: Optional[bool] = None
-    password: Optional[str] = Field(None, min_length=6)
+    password: Optional[str] = Field(None, min_length=8)
 
 class UsuarioResponse(UsuarioBase, EstadoSchema, TimestampSchema):
     id_usuario: int
