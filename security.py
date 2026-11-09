@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 import bcrypt
 from fastapi import Depends, HTTPException, status
@@ -7,14 +7,14 @@ from sqlalchemy import select
 from fastapi.security import OAuth2PasswordBearer
 
 from database import get_db
+from config import get_settings
 import models
 
+settings = get_settings()
 
-# ==================== CONFIGURACIÓN ====================
-
-SECRET_KEY = "tu_clave_super_segura"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 horas
+TEMP_TOKEN_EXPIRE_MINUTES = 5           # token temporal para paso 2FA
 
 
 # ==================== PASSWORD ====================
@@ -31,16 +31,24 @@ def verify_password(password: str, hashed: str) -> bool:
 
 def create_access_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
+    return jwt.encode(to_encode, settings.secret_key, algorithm=ALGORITHM)
 
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def create_temp_token(user_id: int) -> str:
+    """Token de corta duración usado mientras el usuario completa el paso 2FA."""
+    expire = datetime.now(timezone.utc) + timedelta(minutes=TEMP_TOKEN_EXPIRE_MINUTES)
+    return jwt.encode(
+        {"sub": str(user_id), "2fa_pending": True, "exp": expire},
+        settings.secret_key,
+        algorithm=ALGORITHM,
+    )
 
 
 def decode_access_token(token: str):
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
         return payload
     except JWTError:
         return None

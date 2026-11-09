@@ -31,12 +31,13 @@ RUN useradd --create-home --shell /bin/bash appuser
 RUN chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
+# Railway inyecta el puerto en $PORT; 8000 es el valor por defecto en local
+ENV PORT=8000
 EXPOSE 8000
 
-# Health check
+# Health check (urllib de la stdlib — la imagen slim no trae curl)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD python -c "import os,urllib.request; urllib.request.urlopen('http://localhost:'+os.environ.get('PORT','8000')+'/health')" || exit 1
 
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application (forma shell para que ${PORT} se expanda)
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT}

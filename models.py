@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Text, ForeignKey, DateTime, CheckConstraint
+from sqlalchemy import Column, Integer, String, Boolean, Text, ForeignKey, DateTime, CheckConstraint, Numeric
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
@@ -33,9 +33,23 @@ class Universidad(Base, TimestampMixin, EstadoMixin):
 class Carrera(Base, TimestampMixin, EstadoMixin):
     __tablename__ = "carreras"
 
-    id_carrera = Column(Integer, primary_key=True, index=True)
+    id_carrera   = Column(Integer, primary_key=True, index=True)
     id_universidad = Column(Integer, ForeignKey("universidades.id_universidad", ondelete="CASCADE"))
-    nombre = Column(String(200), nullable=False)
+    nombre       = Column(String(200), nullable=False)
+    rasgo        = Column(String(1))          # R, I, A, S, E, C
+    tipo         = Column(String(50))         # Técnico, Tecnológico, Universitario
+    costo        = Column(String(20))         # gratuito, bajo, medio, alto
+    ciudad       = Column(String(100))
+    modalidad    = Column(JSONB, default=list) # ["presencial", "virtual"]
+    con_beca     = Column(Boolean, default=False)
+    duracion     = Column(String(50))
+    requisitos   = Column(Text)
+    descripcion  = Column(Text)
+    url          = Column(Text)
+
+    __table_args__ = (
+        CheckConstraint("rasgo IN ('R','I','A','S','E','C')", name="carrera_rasgo_check"),
+    )
 
     universidad = relationship("Universidad", back_populates="carreras")
     usuario_carreras = relationship("UsuarioCarrera", back_populates="carrera", cascade="all, delete-orphan")
@@ -76,6 +90,8 @@ class Usuario(Base, TimestampMixin, EstadoMixin):
     password_hash = Column(Text, nullable=False)
     tipo_documento = Column(String(10), nullable=False)
     numero_documento = Column(String(25), nullable=False)
+    totp_secret = Column(Text, nullable=True)
+    totp_enabled = Column(Boolean, default=False)
 
     usuario_roles = relationship("UsuarioRol", back_populates="usuario", cascade="all, delete-orphan")
     usuario_carreras = relationship("UsuarioCarrera", back_populates="usuario", cascade="all, delete-orphan")
@@ -175,6 +191,18 @@ class PerfilFinanciero(Base, TimestampMixin, EstadoMixin):
     elegible_subsidios = Column(Boolean, default=False)
 
     usuario = relationship("Usuario", back_populates="perfiles_financieros")
+
+
+# ==================== PROGRESO EMPLEO ====================
+
+class ProgresoEmpleo(Base, TimestampMixin):
+    __tablename__ = "progreso_empleo"
+
+    id_progreso = Column(Integer, primary_key=True, index=True)
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="CASCADE"), unique=True, nullable=False)
+    recursos_completados = Column(JSONB, default=list)
+
+    usuario = relationship("Usuario")
 
 
 # ==================== RESPUESTAS CUESTIONARIO ====================

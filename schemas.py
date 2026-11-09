@@ -113,13 +113,31 @@ class LoginRequest(BaseModel):
     password: str
 
 class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str
-    user: UsuarioResponse
+    access_token: Optional[str] = None
+    token_type: str = "bearer"
+    user: Optional[UsuarioResponse] = None
+    requires_2fa: bool = False
+    temp_token: Optional[str] = None
 
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+# ==================== 2FA ====================
+
+class TwoFASetupResponse(BaseModel):
+    secret: str
+    otpauth_uri: str
+
+class TwoFAVerifySetupRequest(BaseModel):
+    code: str
+
+class TwoFALoginVerifyRequest(BaseModel):
+    temp_token: str
+    code: str
+
+class TwoFADisableRequest(BaseModel):
+    code: str
 
 # ==================== RELACIONES ====================
 
@@ -197,11 +215,26 @@ class RespuestaCuestionarioResponse(TimestampSchema):
 
 # ================ CALCULO DE PERFIL ================
 
+class ChasideTop(BaseModel):
+    codigo: str
+    nombre: str
+    pct: float
+
+class ChasideResponse(BaseModel):
+    scores: Dict[str, float]
+    dominante: str
+    dominante_nombre: str
+    top3: List[ChasideTop]
+    descripciones: Dict[str, str]
+
 class PerfilResponse(BaseModel):
     perfil: Dict[str, float]
     dominante: str
     dominante_nombre: str
     top3: List[str]
+    chaside: Optional[ChasideResponse] = None
+    interes: Optional[Dict[str, float]] = None
+    autoeficacia: Optional[Dict[str, float]] = None
 
 # ==================== PERFIL FINANCIERO ====================
 
@@ -226,6 +259,18 @@ class PerfilFinancieroResponse(PerfilFinancieroCreate, TimestampSchema):
     capacidad_economica: Optional[str] = None
     elegible_subsidios: bool = False
     estado: bool
+
+# ==================== PROGRESO EMPLEO ====================
+
+class ProgresoEmpleoResponse(BaseModel):
+    id_usuario: int
+    recursos_completados: List[str]
+
+    class Config:
+        from_attributes = True
+
+class ProgresoEmpleoUpdate(BaseModel):
+    recursos_completados: List[str]
 
 # ==================== RECOMENDACIONES EDUCACIÓN ====================
 

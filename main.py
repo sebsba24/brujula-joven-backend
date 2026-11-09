@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException, Request
+from sqlalchemy import select
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,15 +9,49 @@ from security import get_current_user
 from database import get_db
 import crud
 import schemas
+import models
 from routes import auth, chat
 from profiles import (
     VALID_RASGOS, MAPA_CARRERAS, MAPA_COMBINADO, HOLLAND_ADYACENTES,
-    PROGRAMAS_EDUCATIVOS, BECAS_POR_CAPACIDAD,
-    calcular_perfil, generar_recomendaciones,
+    BECAS_POR_CAPACIDAD,
+    calcular_perfil, calcular_chaside, generar_recomendaciones,
     calcular_capacidad_financiera, puntuar_programas,
 )
+from config import get_settings
 
-ALLOWED_ORIGINS = ["http://localhost:5173"]
+
+async def _cargar_programas_db(db: AsyncSession) -> dict:
+    """Carga programas educativos desde BD y los devuelve en el mismo
+    formato que PROGRAMAS_EDUCATIVOS (dict rasgo → list[dict])."""
+    result = await db.execute(
+        select(models.Carrera, models.Universidad)
+        .join(models.Universidad, models.Carrera.id_universidad == models.Universidad.id_universidad)
+        .where(models.Carrera.estado == True)
+        .where(models.Carrera.rasgo.isnot(None))
+    )
+    rows = result.all()
+    programas: dict = {r: [] for r in VALID_RASGOS}
+    for carrera, uni in rows:
+        rasgo = carrera.rasgo
+        if rasgo not in programas:
+            continue
+        programas[rasgo].append({
+            "nombre":      carrera.nombre,
+            "inst":        uni.nombre,
+            "tipo":        carrera.tipo or "",
+            "costo":       carrera.costo or "gratuito",
+            "ciudad":      carrera.ciudad or "Nacional",
+            "modalidad":   carrera.modalidad or [],
+            "con_beca":    carrera.con_beca or False,
+            "duracion":    carrera.duracion or "",
+            "requisitos":  carrera.requisitos or "",
+            "descripcion": carrera.descripcion or "",
+            "url":         carrera.url or "",
+        })
+    return programas
+
+_settings = get_settings()
+ALLOWED_ORIGINS = [o.strip() for o in _settings.allowed_origins.split(",") if o.strip()]
 
 app = FastAPI(
     title="Brujula Joven API",
@@ -42,7 +77,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         headers["Access-Control-Allow-Credentials"] = "true"
     return JSONResponse(
         status_code=500,
-        content={"detail": f"Error interno: {str(exc)}"},
+        content={"detail": "Error interno del servidor"},
         headers=headers,
     )
 
@@ -136,20 +171,21 @@ async def get_subsidios_by_usuario(id_usuario: int, db: AsyncSession = Depends(g
 
 # Perfil RIASEC por usuario
 @app.get("/usuarios/{id_usuario}/perfil", tags=["Usuario Perfil"])
-async def get_perfil_by_usuario(id_usuario: int, db: AsyncSession = Depends(get_db)):
+async def get_perfil_by_usuario(
+    id_usuario: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if current_user.id_usuario != id_usuario:
+        raise HTTPException(status_code=403, detail="No autorizado")
 
-    data = await crud.respuesta_cuestionario_crud.get_filtered(
-        db,
-        {"id_usuario": id_usuario}
-    )
-
-    if not data:
+    ultima = await crud.get_last_respuesta_by_usuario(db, id_usuario)
+    if not ultima:
         raise HTTPException(status_code=404, detail="No hay respuestas para este usuario")
 
-    # tomar la última respuesta
-    ultima = sorted(data, key=lambda x: x.id_respuesta, reverse=True)[0]
-
-    return calcular_perfil(ultima.respuestas)
+    resultado = calcular_perfil(ultima.respuestas)
+    resultado["chaside"] = calcular_chaside(resultado["perfil"])
+    return resultado
 
 # ==================== ENDPOINTS FINANCIERO ====================
 
@@ -215,15 +251,14 @@ async def get_perfil_financiero(id_usuario: int, db: AsyncSession = Depends(get_
 @app.get("/usuarios/{id_usuario}/recomendaciones-educacion", tags=["Financiero"])
 async def get_recomendaciones_educacion(id_usuario: int, db: AsyncSession = Depends(get_db)):
     # Perfil vocacional
-    resp_data      = await crud.respuesta_cuestionario_crud.get_filtered(db, {"id_usuario": id_usuario})
-    sin_vocacional = not bool(resp_data)
+    ultima_resp    = await crud.get_last_respuesta_by_usuario(db, id_usuario)
+    sin_vocacional = ultima_resp is None
     top_rasgos     = ["R", "I", "A"]
     rasgos_scores  = {"R": 33, "I": 33, "A": 34, "S": 0, "E": 0, "C": 0}  # defaults
-    if resp_data:
-        ultima_resp   = sorted(resp_data, key=lambda x: x.id_respuesta, reverse=True)[0]
+    if ultima_resp:
         perfil_riasec = calcular_perfil(ultima_resp.respuestas)
         top_rasgos    = perfil_riasec["top3"]
-        rasgos_scores = perfil_riasec["perfil"]  # scores reales 0-100 por cada rasgo
+        rasgos_scores = perfil_riasec["perfil"]
 
     # Perfil financiero
     fin_data       = await crud.perfil_financiero_crud.get_filtered(db, {"id_usuario": id_usuario})
@@ -241,17 +276,59 @@ async def get_recomendaciones_educacion(id_usuario: int, db: AsyncSession = Depe
         })
         modalidad = calc["modalidad_recomendada"]
 
+    programas_db = await _cargar_programas_db(db)
+
     return {
         "capacidad_economica":   capacidad,
         "elegible_subsidios":    elegible,
         "modalidad_recomendada": modalidad,
         "top_rasgos":            top_rasgos,
         "rasgos_scores":         rasgos_scores,
-        "programas":             puntuar_programas(rasgos_scores, capacidad, modalidad),
+        "programas":             puntuar_programas(rasgos_scores, capacidad, modalidad, programas_db),
         "becas":                 BECAS_POR_CAPACIDAD.get(capacidad, []),
         "sin_perfil_financiero": sin_financiero,
         "sin_perfil_vocacional": sin_vocacional,
     }
+
+
+@app.get("/programas-educativos", tags=["Educación"])
+async def get_programas_educativos(
+    rasgo: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Devuelve todos los programas educativos desde la BD.
+    Filtrable por rasgo RIASEC: ?rasgo=I"""
+    query = (
+        select(models.Carrera, models.Universidad)
+        .join(models.Universidad, models.Carrera.id_universidad == models.Universidad.id_universidad)
+        .where(models.Carrera.estado == True)
+    )
+    if rasgo:
+        rasgo = rasgo.upper()
+        if rasgo not in VALID_RASGOS:
+            raise HTTPException(status_code=400, detail=f"Rasgo inválido. Válidos: {VALID_RASGOS}")
+        query = query.where(models.Carrera.rasgo == rasgo)
+
+    result = await db.execute(query.order_by(models.Carrera.rasgo, models.Carrera.id_carrera))
+    rows = result.all()
+    return [
+        {
+            "id_carrera":  c.id_carrera,
+            "rasgo":       c.rasgo,
+            "nombre":      c.nombre,
+            "inst":        u.nombre,
+            "tipo":        c.tipo,
+            "costo":       c.costo,
+            "ciudad":      c.ciudad,
+            "modalidad":   c.modalidad,
+            "con_beca":    c.con_beca,
+            "duracion":    c.duracion,
+            "requisitos":  c.requisitos,
+            "descripcion": c.descripcion,
+            "url":         c.url,
+        }
+        for c, u in rows
+    ]
 
 
 @app.delete("/usuarios/{id_usuario}/perfil-financiero", tags=["Financiero"])
@@ -289,25 +366,22 @@ async def eliminar_respuestas_cuestionario(
 
 
 @app.get("/usuarios/{id_usuario}/recomendaciones", tags=["Usuario Perfil"])
-async def get_recomendaciones_by_usuario(id_usuario: int, db: AsyncSession = Depends(get_db)):
+async def get_recomendaciones_by_usuario(
+    id_usuario: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if current_user.id_usuario != id_usuario:
+        raise HTTPException(status_code=403, detail="No autorizado")
 
-    data = await crud.respuesta_cuestionario_crud.get_filtered(
-        db,
-        {"id_usuario": id_usuario}
-    )
-
-    if not data:
+    ultima = await crud.get_last_respuesta_by_usuario(db, id_usuario)
+    if not ultima:
         raise HTTPException(status_code=404, detail="No hay respuestas para este usuario")
 
-    ultima = sorted(data, key=lambda x: x.id_respuesta, reverse=True)[0]
-
     perfil = calcular_perfil(ultima.respuestas)
-
-    recomendaciones = generar_recomendaciones(perfil)
-
     return {
         "perfil": perfil,
-        "recomendaciones": recomendaciones
+        "recomendaciones": generar_recomendaciones(perfil),
     }
 
 # Preguntas múltiples por grupo
@@ -338,6 +412,12 @@ async def get_preguntas_multiples_por_grupo(grupo: str, db: AsyncSession = Depen
                     "opciones": []
                 }
 
+            # Evitar opciones duplicadas por rasgo o por texto
+            rasgos_existentes = {o["rasgo"] for o in resultado[rel.id_enunciado]["opciones"]}
+            textos_existentes = {o["texto"] for o in resultado[rel.id_enunciado]["opciones"]}
+            if opcion.rasgo in rasgos_existentes or opcion.descripcion in textos_existentes:
+                continue
+
             resultado[rel.id_enunciado]["opciones"].append({
                 "id": opcion.id_pregunta,
                 "texto": opcion.descripcion,
@@ -348,7 +428,7 @@ async def get_preguntas_multiples_por_grupo(grupo: str, db: AsyncSession = Depen
 
     except Exception as e:
         print("ERROR CRITICO:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error al cargar preguntas múltiples")
 
 @app.get("/preguntas/nivel/{nivel}", response_model=List[schemas.PreguntaResponse],tags=["Preguntas"])
 async def get_preguntas_by_nivel(nivel: int, db: AsyncSession = Depends(get_db)):
@@ -371,20 +451,60 @@ async def guardar_respuestas_cuestionario(
     try:
         data = {
             "id_usuario": current_user.id_usuario,
-            "respuestas": payload.model_dump(),
-            "estado": True
+            "respuestas": {"respuestas": payload.respuestas},
+            "estado": True,
         }
-
         result = await crud.respuesta_cuestionario_crud.create(db, data)
-
         return {
             "message": "Respuestas guardadas correctamente",
-            "id_respuesta": result.id_respuesta
+            "id_respuesta": result.id_respuesta,
         }
-
     except Exception as e:
         print("ERROR GUARDANDO RESPUESTAS:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error al guardar las respuestas")
+
+# ==================== ENDPOINTS EMPLEO ====================
+
+@app.get("/usuarios/{id_usuario}/progreso-empleo", tags=["Empleo"])
+async def get_progreso_empleo(
+    id_usuario: int,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if current_user.id_usuario != id_usuario:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    result = await db.execute(
+        select(models.ProgresoEmpleo).where(models.ProgresoEmpleo.id_usuario == id_usuario)
+    )
+    progreso = result.scalar_one_or_none()
+    recursos = progreso.recursos_completados if progreso else []
+    return {"id_usuario": id_usuario, "recursos_completados": recursos or []}
+
+
+@app.post("/usuarios/{id_usuario}/progreso-empleo", tags=["Empleo"])
+async def guardar_progreso_empleo(
+    id_usuario: int,
+    payload: schemas.ProgresoEmpleoUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if current_user.id_usuario != id_usuario:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    result = await db.execute(
+        select(models.ProgresoEmpleo).where(models.ProgresoEmpleo.id_usuario == id_usuario)
+    )
+    progreso = result.scalar_one_or_none()
+    if progreso:
+        progreso.recursos_completados = payload.recursos_completados
+    else:
+        progreso = models.ProgresoEmpleo(
+            id_usuario=id_usuario,
+            recursos_completados=payload.recursos_completados,
+        )
+        db.add(progreso)
+    await db.commit()
+    return {"message": "Progreso guardado", "recursos_completados": payload.recursos_completados}
+
 
 # ==================== REGISTRO DE ENTIDADES ====================
 

@@ -1,0 +1,23 @@
+# Entornos virtuales y caché de Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Secretos y configuración local
+.env
+.env.*
+!.env.example
+
+# Pruebas y scripts que no van en la imagen
+test_*.py
+migrate_*.py
+seed_*.py
+
+# Git y editores
+.git/
+.gitignore
+.vscode/
+.idea/
