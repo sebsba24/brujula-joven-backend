@@ -75,7 +75,16 @@ class CRUDBase(Generic[T]):
             return db_obj
         except IntegrityError as e:
             await db.rollback()
-            raise HTTPException(status_code=400, detail=str(e))
+            msg = str(e).lower()
+            if "email" in msg or "usuarios_email" in msg:
+                raise HTTPException(
+                    status_code=409,
+                    detail="El correo electrónico ya está registrado",
+                )
+            raise HTTPException(
+                status_code=409,
+                detail="El registro ya existe o viola una restricción de unicidad",
+            )
 
     # ==================== UPDATE ====================
     async def update(
@@ -106,7 +115,16 @@ class CRUDBase(Generic[T]):
             return db_obj
         except IntegrityError as e:
             await db.rollback()
-            raise HTTPException(status_code=400, detail=str(e))
+            msg = str(e).lower()
+            if "email" in msg or "usuarios_email" in msg:
+                raise HTTPException(
+                    status_code=409,
+                    detail="El correo electrónico ya está registrado",
+                )
+            raise HTTPException(
+                status_code=409,
+                detail="El registro ya existe o viola una restricción de unicidad",
+            )
 
     # ==================== SOFT DELETE ====================
     async def soft_delete(self, db: AsyncSession, id: int) -> bool:
