@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     debug: bool = False
     anthropic_api_key: str = ""
     secret_key: str = "dev_insecure_fallback_key"
+    encryption_key: str = ""  # clave para cifrar datos sensibles en reposo (cédula)
     allowed_origins: str = "http://localhost:5173"
 
     class Config:

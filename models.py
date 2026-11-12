@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
 from database import Base
+from crypto import EncryptedStr
 
 
 # ==================== BASE MIXIN ====================
@@ -89,7 +90,7 @@ class Usuario(Base, TimestampMixin, EstadoMixin):
     email = Column(String(150), nullable=False, unique=True)
     password_hash = Column(Text, nullable=False)
     tipo_documento = Column(String(10), nullable=False)
-    numero_documento = Column(String(25), nullable=False)
+    numero_documento = Column(EncryptedStr, nullable=False)  # cifrado en reposo
     totp_secret = Column(Text, nullable=True)
     totp_enabled = Column(Boolean, default=False)
 
