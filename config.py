@@ -3,7 +3,7 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    database_url: str = "postgresql+asyncpg://postgres:1234@localhost:5432/brujulaj_db"
+    database_url: str = "postgresql+asyncpg://postgres:@localhost:5432/brujulaj_db"
     debug: bool = False
     anthropic_api_key: str = ""
     secret_key: str = "dev_insecure_fallback_key"
