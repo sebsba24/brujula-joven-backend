@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Text, ForeignKey, DateTime, CheckConstraint, Numeric
+from sqlalchemy import Column, Integer, String, Boolean, Text, ForeignKey, DateTime, CheckConstraint, Numeric, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import JSONB
@@ -50,6 +50,7 @@ class Carrera(Base, TimestampMixin, EstadoMixin):
 
     __table_args__ = (
         CheckConstraint("rasgo IN ('R','I','A','S','E','C')", name="carrera_rasgo_check"),
+        Index("ix_carreras_rasgo_estado", "rasgo", "estado"),
     )
 
     universidad = relationship("Universidad", back_populates="carreras")
@@ -166,7 +167,7 @@ class PerfilFinanciero(Base, TimestampMixin, EstadoMixin):
     __tablename__ = "perfiles_financieros"
 
     id_perfil = Column(Integer, primary_key=True, index=True)
-    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="CASCADE"))
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario", ondelete="CASCADE"), index=True)
 
     # Paso 1: Hogar
     estrato = Column(Integer, nullable=False)
@@ -215,5 +216,9 @@ class RespuestaCuestionario(Base, TimestampMixin):
     id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"))
     respuestas = Column(JSONB)
     estado = Column(Boolean, default=True)
+
+    __table_args__ = (
+        Index("ix_respuestas_usuario_estado", "id_usuario", "estado"),
+    )
 
     usuario = relationship("Usuario", back_populates="respuestas_cuestionario")

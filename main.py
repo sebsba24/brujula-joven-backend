@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException, Request
 from sqlalchemy import select
+from sqlalchemy.orm import aliased
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -215,10 +216,9 @@ async def guardar_perfil_financiero(
 
 @app.get("/usuarios/{id_usuario}/perfil-financiero", tags=["Financiero"])
 async def get_perfil_financiero(id_usuario: int, db: AsyncSession = Depends(get_db)):
-    data = await crud.perfil_financiero_crud.get_filtered(db, {"id_usuario": id_usuario})
-    if not data:
+    ultimo = await crud.get_last_perfil_financiero(db, id_usuario)
+    if not ultimo:
         raise HTTPException(status_code=404, detail="Sin perfil financiero")
-    ultimo = sorted(data, key=lambda x: x.id_perfil, reverse=True)[0]
     calc   = calcular_capacidad_financiera({
         "estrato":               ultimo.estrato,
         "ingresos_hogar":        ultimo.ingresos_hogar,
@@ -261,11 +261,10 @@ async def get_recomendaciones_educacion(id_usuario: int, db: AsyncSession = Depe
         rasgos_scores = perfil_riasec["perfil"]
 
     # Perfil financiero
-    fin_data       = await crud.perfil_financiero_crud.get_filtered(db, {"id_usuario": id_usuario})
-    sin_financiero = not bool(fin_data)
+    uf             = await crud.get_last_perfil_financiero(db, id_usuario)
+    sin_financiero = uf is None
     capacidad, elegible, modalidad = "media", True, "presencial"
-    if fin_data:
-        uf        = sorted(fin_data, key=lambda x: x.id_perfil, reverse=True)[0]
+    if uf:
         capacidad = uf.capacidad_economica or "media"
         elegible  = uf.elegible_subsidios
         calc      = calcular_capacidad_financiera({
@@ -388,40 +387,35 @@ async def get_recomendaciones_by_usuario(
 @app.get("/preguntas/multiples/{grupo}", tags=["Preguntas"])
 async def get_preguntas_multiples_por_grupo(grupo: str, db: AsyncSession = Depends(get_db)):
     try:
-        preguntas = await crud.pregunta_crud.get_all(db)
-        relaciones = await crud.get_preguntas_multiples(db)
+        # Filtra por grupo y resuelve enunciado + opción en una sola consulta con JOIN
+        # (evita cargar todas las preguntas, que con el límite por defecto de 100 podían truncarse).
+        Enunciado = aliased(models.Pregunta)
+        Opcion = aliased(models.Pregunta)
+        result = await db.execute(
+            select(Enunciado, Opcion)
+            .join(models.PreguntaMultiple, models.PreguntaMultiple.id_enunciado == Enunciado.id_pregunta)
+            .join(Opcion, models.PreguntaMultiple.id_pregunta == Opcion.id_pregunta)
+            .where(models.PreguntaMultiple.grupo == grupo)
+        )
 
-        preguntas_dict = {p.id_pregunta: p for p in preguntas}
         resultado = {}
-
-        for rel in relaciones:
-
-            if rel.grupo != grupo:
-                continue
-
-            enunciado = preguntas_dict.get(rel.id_enunciado)
-            opcion = preguntas_dict.get(rel.id_pregunta)
-
-            if not enunciado or not opcion:
-                continue
-
-            if rel.id_enunciado not in resultado:
-                resultado[rel.id_enunciado] = {
-                    "id": enunciado.id_pregunta,
-                    "enunciado": enunciado.descripcion,
-                    "opciones": []
-                }
+        for enunciado, opcion in result.all():
+            bloque = resultado.setdefault(enunciado.id_pregunta, {
+                "id": enunciado.id_pregunta,
+                "enunciado": enunciado.descripcion,
+                "opciones": [],
+            })
 
             # Evitar opciones duplicadas por rasgo o por texto
-            rasgos_existentes = {o["rasgo"] for o in resultado[rel.id_enunciado]["opciones"]}
-            textos_existentes = {o["texto"] for o in resultado[rel.id_enunciado]["opciones"]}
+            rasgos_existentes = {o["rasgo"] for o in bloque["opciones"]}
+            textos_existentes = {o["texto"] for o in bloque["opciones"]}
             if opcion.rasgo in rasgos_existentes or opcion.descripcion in textos_existentes:
                 continue
 
-            resultado[rel.id_enunciado]["opciones"].append({
+            bloque["opciones"].append({
                 "id": opcion.id_pregunta,
                 "texto": opcion.descripcion,
-                "rasgo": opcion.rasgo
+                "rasgo": opcion.rasgo,
             })
 
         return list(resultado.values())
