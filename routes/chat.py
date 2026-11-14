@@ -15,6 +15,16 @@ from profiles import (
 
 router = APIRouter()
 
+# Cliente Anthropic reutilizado entre peticiones (evita reabrir el cliente HTTP en cada mensaje)
+_anthropic_client: anthropic.AsyncAnthropic | None = None
+
+
+def _get_anthropic_client(api_key: str) -> anthropic.AsyncAnthropic:
+    global _anthropic_client
+    if _anthropic_client is None:
+        _anthropic_client = anthropic.AsyncAnthropic(api_key=api_key)
+    return _anthropic_client
+
 
 class ChatMessage(BaseModel):
     role: str
@@ -91,9 +101,8 @@ async def send_message(
     # ── Financiero ────────────────────────────────────────────────────────────
     financiero_text = "Aún no ha completado el perfil financiero."
     capacidad = "media"
-    fin_data = await crud.perfil_financiero_crud.get_filtered(db, {"id_usuario": current_user.id_usuario})
-    if fin_data:
-        uf = sorted(fin_data, key=lambda x: x.id_perfil, reverse=True)[0]
+    uf = await crud.get_last_perfil_financiero(db, current_user.id_usuario)
+    if uf:
         capacidad = uf.capacidad_economica or "media"
         calc = calcular_capacidad_financiera({
             "estrato":               uf.estrato,
@@ -131,7 +140,7 @@ async def send_message(
 
     # ── Llamada a Anthropic ───────────────────────────────────────────────────
     try:
-        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        client = _get_anthropic_client(settings.anthropic_api_key)
         response = await client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=512,

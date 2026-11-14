@@ -174,3 +174,17 @@ async def get_last_respuesta_by_usuario(db: AsyncSession, id_usuario: int):
 
     result = await db.execute(query)
     return result.scalar_one_or_none()
+
+
+async def get_last_perfil_financiero(db: AsyncSession, id_usuario: int):
+    """Último perfil financiero activo del usuario (ORDER BY ... LIMIT 1 en SQL,
+    en vez de traer todos los perfiles y ordenar en Python)."""
+    query = (
+        select(models.PerfilFinanciero)
+        .where(models.PerfilFinanciero.id_usuario == id_usuario)
+        .where(models.PerfilFinanciero.estado == True)
+        .order_by(desc(models.PerfilFinanciero.id_perfil))
+        .limit(1)
+    )
+    result = await db.execute(query)
+    return result.scalar_one_or_none()
