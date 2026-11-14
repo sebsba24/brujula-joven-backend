@@ -1,5 +1,6 @@
-# Test standalone — no requiere FastAPI ni DB
-# Copia las funciones del algoritmo para probarlas directamente
+# Script standalone de demostración — no requiere FastAPI ni DB.
+# La lógica del algoritmo se IMPORTA de profiles.py (antes se copiaba aquí, con una versión
+# que además quedó desfasada); abajo vive solo el dataset de prueba.
 
 PROGRAMAS_EDUCATIVOS = {
     "R": [
@@ -53,45 +54,13 @@ PROGRAMAS_EDUCATIVOS = {
     ],
 }
 
-HOLLAND_ADYACENTES = {
-    "R": ["I", "C"], "I": ["R", "A"], "A": ["I", "S"],
-    "S": ["A", "E"], "E": ["S", "C"], "C": ["E", "R"],
-}
+# La lógica real se importa de profiles.py y se ejerce sobre el dataset de arriba
+# (fijado como `programas_dict`), de modo que la demo refleje el algoritmo de producción.
+from profiles import puntuar_programas as _puntuar_programas
+
 
 def puntuar_programas(rasgos_scores, capacidad, modalidad_pref):
-    COSTOS_OK = {
-        "baja":  ["gratuito", "bajo"],
-        "media": ["gratuito", "bajo", "medio"],
-        "alta":  ["gratuito", "bajo", "medio", "alto"],
-    }
-    costos_permitidos = COSTOS_OK.get(capacidad, ["gratuito", "bajo", "medio"])
-    resultado = []
-
-    for rasgo, programas in PROGRAMAS_EDUCATIVOS.items():
-        score_directo = rasgos_scores.get(rasgo, 0) / 100
-        adyacentes    = HOLLAND_ADYACENTES.get(rasgo, [])
-        score_adj     = max((rasgos_scores.get(a, 0) for a in adyacentes), default=0) / 100
-        riasec_score  = (score_directo * 0.80) + (score_adj * 0.20)
-
-        for prog in programas:
-            if prog["costo"] in costos_permitidos:
-                fin_score = 1.0
-            elif prog["con_beca"]:
-                fin_score = 0.65
-            else:
-                continue
-
-            mod_score = 1.0 if modalidad_pref in prog["modalidad"] else 0.3
-            total = round((riasec_score * 0.60) + (fin_score * 0.25) + (mod_score * 0.15), 3)
-            resultado.append({**prog, "rasgo": rasgo, "score": total})
-
-    vistos, ordenados = set(), []
-    for p in sorted(resultado, key=lambda x: x["score"], reverse=True):
-        key = (p["nombre"], p["inst"])
-        if key not in vistos:
-            vistos.add(key)
-            ordenados.append(p)
-    return ordenados
+    return _puntuar_programas(rasgos_scores, capacidad, modalidad_pref, PROGRAMAS_EDUCATIVOS)
 
 # ─────────────────────────────────────────────────────────────────────────────
 
