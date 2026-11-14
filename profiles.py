@@ -578,6 +578,12 @@ HOLLAND_ADYACENTES = {
     "C": ["E", "R"],
 }
 
+# Techo del "match" mostrado. El puntaje ponderado ya vive en [0, 1]; se escala a este tope
+# para que el porcentaje que ve el usuario nunca supere el 85 %: ninguna recomendación
+# algorítmica es una certeza absoluta. NO altera la ponderación 60/25/15 (se conserva en
+# `raw`), ni el 60/40 interés/autoeficacia del perfil (eso vive en calcular_perfil).
+MATCH_CEILING = 0.85
+
 
 def puntuar_programas(
     rasgos_scores: dict,
@@ -594,30 +600,46 @@ def puntuar_programas(
     programas_dict: dict rasgo→list[prog]. Si None usa PROGRAMAS_EDUCATIVOS.
     """
     fuente = programas_dict if programas_dict is not None else PROGRAMAS_EDUCATIVOS
-    COSTOS_OK = {
-        "baja":  ["gratuito", "bajo"],
-        "media": ["gratuito", "bajo", "medio"],
-        "alta":  ["gratuito", "bajo", "medio", "alto"],
-    }
-    costos_permitidos = COSTOS_OK.get(capacidad, ["gratuito", "bajo", "medio"])
+    # Rango de costo y tope por capacidad: permite premiar la alineación costo↔capacidad
+    # (con capacidad alta suben las opciones de mayor presupuesto que la persona sí podría pagar,
+    #  sin dejar de lado las becas, que reciben un bono aparte más abajo).
+    COST_RANK = {"gratuito": 0, "bajo": 1, "medio": 2, "alto": 3}
+    CAP_MAX   = {"baja": 1, "media": 2, "alta": 3}
+    cap_max   = CAP_MAX.get(capacidad, 2)
+    # Afinidad relativa al propio perfil: el rasgo más fuerte del usuario vale 1.0, de modo que
+    # el "match" de cabecera refleje la cercanía real al perfil (antes se dividía entre 100, lo que
+    # dejaba los porcentajes artificialmente bajos aunque el programa fuera muy afín).
+    max_trait = max(rasgos_scores.values(), default=0) or 1
     resultado = []
 
     for rasgo, programas in fuente.items():
-        score_directo = rasgos_scores.get(rasgo, 0) / 100
+        score_directo = rasgos_scores.get(rasgo, 0) / max_trait
         adyacentes    = HOLLAND_ADYACENTES.get(rasgo, [])
-        score_adj     = max((rasgos_scores.get(a, 0) for a in adyacentes), default=0) / 100
+        score_adj     = max((rasgos_scores.get(a, 0) for a in adyacentes), default=0) / max_trait
         riasec_score  = (score_directo * 0.80) + (score_adj * 0.20)
 
         for prog in programas:
-            if prog["costo"] in costos_permitidos:
-                fin_score = 1.0
+            cost = COST_RANK.get(prog["costo"], 2)
+            if cost <= cap_max:
+                # Dentro del alcance; a mayor capacidad, los costos más altos puntúan mejor
+                # (capacidad alta → gratuito=0.50 … alto=0.85), surgiendo las opciones premium.
+                fin_score = 0.50 + 0.35 * (cost / cap_max)
             elif prog["con_beca"]:
-                fin_score = 0.65
+                # Fuera del alcance directo pero con beca: la opción sigue siendo visible.
+                fin_score = 0.40
             else:
                 continue
 
-            mod_score = 1.0 if modalidad_pref in prog["modalidad"] else 0.3
-            total = round((riasec_score * 0.60) + (fin_score * 0.25) + (mod_score * 0.15), 3)
+            # Las becas no se dejan de lado: bono para que la financiación destaque en el ranking.
+            if prog.get("con_beca"):
+                fin_score = min(1.0, fin_score + 0.08)
+
+            modalidades = prog["modalidad"] if isinstance(prog["modalidad"], list) else []
+            mod_score = 1.0 if modalidad_pref in modalidades else 0.6
+            # Ponderación 60/25/15 (RIASEC / financiero / modalidad); el crudo queda en [0, 1].
+            raw   = (riasec_score * 0.60) + (fin_score * 0.25) + (mod_score * 0.15)
+            # Escalado al techo de match (≤ 0.85) sin tocar las proporciones del crudo.
+            total = round(raw * MATCH_CEILING, 3)
             resultado.append({**prog, "rasgo": rasgo, "score": total})
 
     vistos, ordenados = set(), []
