@@ -11,7 +11,7 @@ from database import get_db
 import crud
 import schemas
 import models
-from routes import auth, chat
+from routes import auth  # Brújula IA (chat) desactivada temporalmente: , chat
 from profiles import (
     VALID_RASGOS, MAPA_CARRERAS, MAPA_COMBINADO, HOLLAND_ADYACENTES,
     BECAS_POR_CAPACIDAD,
@@ -82,9 +82,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         headers=headers,
     )
 
-# ==================== AUTH + CHAT ====================
+# ==================== AUTH ====================
 app.include_router(auth.router)
-app.include_router(chat.router, prefix="/chat", tags=["Chat"])
+# Brújula IA (chat) desactivada temporalmente — no se expone el endpoint /chat
+# app.include_router(chat.router, prefix="/chat", tags=["Chat"])
 
 # ==================== HEALTH ====================
 @app.get("/health")
