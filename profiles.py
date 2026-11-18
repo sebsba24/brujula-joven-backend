@@ -436,6 +436,20 @@ PROGRAMAS_EDUCATIVOS = {
             "descripcion": "Programa acreditado de alta calidad con énfasis en neurociencias y psicología clínica. Excelente reputación en el mercado laboral.",
             "url": "https://www.javeriana.edu.co/programas/pregrado/facultad-de-psicologia/psicologia",
         },
+        {
+            "nombre": "Ciencias Políticas", "inst": "UNAL", "tipo": "Universitario",
+            "costo": "bajo", "ciudad": "Bogotá", "modalidad": ["presencial"], "con_beca": True,
+            "duracion": "8 semestres", "requisitos": "Examen de admisión UNAL, Saber 11",
+            "descripcion": "Análisis del Estado, políticas públicas, gobierno y sociedad. Forma profesionales para el sector público, la investigación social y las organizaciones civiles.",
+            "url": "https://cienciapolitica.unal.edu.co/",
+        },
+        {
+            "nombre": "Ciencias Políticas", "inst": "U. Javeriana", "tipo": "Universitario",
+            "costo": "alto", "ciudad": "Bogotá", "modalidad": ["presencial"], "con_beca": False,
+            "duracion": "8 semestres", "requisitos": "Bachillerato completo, prueba de admisión Javeriana",
+            "descripcion": "Estudio de sistemas políticos, políticas públicas y relaciones de poder, con énfasis en pensamiento crítico y gestión pública.",
+            "url": "https://www.javeriana.edu.co/carrera-ciencia-politica",
+        },
     ],
     "E": [
         {
@@ -479,6 +493,34 @@ PROGRAMAS_EDUCATIVOS = {
             "duracion": "8 semestres", "requisitos": "Bachillerato completo, prueba de admisión",
             "descripcion": "Único programa en Colombia 100% enfocado en creación de empresas. Acceso al ecosistema de startups Javeriano y fondos de inversión ángel.",
             "url": "https://www.javeriana.edu.co/programas/pregrado/facultad-de-ciencias-economicas-y-administrativas/emprendimiento-e-innovacion",
+        },
+        {
+            "nombre": "Derecho", "inst": "UNAL", "tipo": "Universitario",
+            "costo": "bajo", "ciudad": "Bogotá", "modalidad": ["presencial"], "con_beca": True,
+            "duracion": "10 semestres", "requisitos": "Examen de admisión UNAL, Saber 11",
+            "descripcion": "Formación jurídica integral (derecho público, privado y penal) con énfasis en argumentación, litigio y justicia. Una de las mejores facultades de derecho del país.",
+            "url": "https://derecho.unal.edu.co/",
+        },
+        {
+            "nombre": "Derecho", "inst": "U. Javeriana", "tipo": "Universitario",
+            "costo": "alto", "ciudad": "Bogotá", "modalidad": ["presencial"], "con_beca": False,
+            "duracion": "10 semestres", "requisitos": "Bachillerato completo, prueba de admisión Javeriana",
+            "descripcion": "Programa acreditado de alta calidad con énfasis en derecho internacional, constitucional y empresarial. Amplia red de egresados en el sector público y privado.",
+            "url": "https://www.javeriana.edu.co/carrera-derecho",
+        },
+        {
+            "nombre": "Relaciones Internacionales", "inst": "U. Javeriana", "tipo": "Universitario",
+            "costo": "alto", "ciudad": "Bogotá", "modalidad": ["presencial"], "con_beca": False,
+            "duracion": "8 semestres", "requisitos": "Bachillerato completo, prueba de admisión Javeriana",
+            "descripcion": "Diplomacia, política exterior, cooperación y negociación internacional. Incluye segundo idioma e intercambios; salidas en cancillería, ONG y organismos multilaterales.",
+            "url": "https://www.javeriana.edu.co/carrera-relaciones-internacionales",
+        },
+        {
+            "nombre": "Relaciones Internacionales", "inst": "U. EAN", "tipo": "Universitario",
+            "costo": "medio", "ciudad": "Bogotá", "modalidad": ["presencial"], "con_beca": True,
+            "duracion": "8 semestres", "requisitos": "Bachillerato completo, Saber 11",
+            "descripcion": "Enfoque en negociación global, comercio y cooperación, con convenios internacionales. Formación práctica orientada al mundo diplomático y empresarial.",
+            "url": "https://www.universidadean.edu.co/",
         },
     ],
     "C": [
